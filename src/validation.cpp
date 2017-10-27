@@ -80,7 +80,6 @@ bool fCheckpointsEnabled = DEFAULT_CHECKPOINTS_ENABLED;
 size_t nCoinCacheUsage = 5000 * 300;
 uint64_t nPruneTarget = 0;
 int64_t nMaxTipAge = DEFAULT_MAX_TIP_AGE;
-bool fEnableReplacement = DEFAULT_ENABLE_REPLACEMENT;
 
 uint256 hashAssumeValid;
 
@@ -611,9 +610,7 @@ private:
     secp256k1_generator gen;
     const bool store;
 public:
-    CSurjectionCheck(secp256k1_surjectionproof& proofIn, std::vector<secp256k1_generator>& vTags_, secp256k1_generator& genIn, const bool storeIn) : proof(proofIn), gen(genIn), store(storeIn) {
-        vTags.swap(vTags_);
-    }
+    CSurjectionCheck(secp256k1_surjectionproof& proofIn, std::vector<secp256k1_generator>& tags_in, secp256k1_generator& genIn, const bool storeIn) : proof(proofIn), vTags(tags_in), gen(genIn), store(storeIn) {}
 
     bool operator()();
 };
@@ -735,15 +732,14 @@ bool VerifyAmounts(const CCoinsViewCache& cache, const CTransaction& tx, std::ve
                 if (!MoneyRange(val.GetAmount()))
                     return false;
 
-                assert(val.GetAmount() != 0);
-
                 if (secp256k1_pedersen_commit(secp256k1_ctx_verify_amounts, &commit, explBlinds, val.GetAmount(), &gen) != 1)
                     return false;
             }
-            else {
-                assert(val.IsCommitment());
+            else if (val.IsCommitment()) {
                 if (secp256k1_pedersen_commitment_parse(secp256k1_ctx_verify_amounts, &commit, &val.vchCommitment[0]) != 1)
                     return false;
+            } else {
+                return false;
             }
 
             vData.push_back(commit);
@@ -901,7 +897,6 @@ bool VerifyAmounts(const CCoinsViewCache& cache, const CTransaction& tx, std::ve
                 return false;
         }
         else {
-            assert(false);
             return false;
         }
 
@@ -921,10 +916,11 @@ bool VerifyAmounts(const CCoinsViewCache& cache, const CTransaction& tx, std::ve
             if (secp256k1_pedersen_commit(secp256k1_ctx_verify_amounts, &commit, explBlinds, val.GetAmount(), &gen) != 1)
                 return false;
         }
-        else
-        {
+        else if (val.IsCommitment()) {
             if (secp256k1_pedersen_commitment_parse(secp256k1_ctx_verify_amounts, &commit, &val.vchCommitment[0]) != 1)
                 return false;
+        } else {
+            return false;
         }
 
         vData.push_back(commit);
@@ -962,8 +958,6 @@ bool VerifyAmounts(const CCoinsViewCache& cache, const CTransaction& tx, std::ve
         }
     }
 
-    std::vector<secp256k1_generator> copy_targetGenerators(targetGenerators);
-
     for (size_t i = 0; i < tx.vout.size(); i++)
     {
         const CConfidentialAsset& asset = tx.vout[i].nAsset;
@@ -987,9 +981,6 @@ bool VerifyAmounts(const CCoinsViewCache& cache, const CTransaction& tx, std::ve
         if (QueueCheck(pvChecks, new CSurjectionCheck(proof, targetGenerators, gen, cacheStore)) != SCRIPT_ERR_OK) {
             return false;
         }
-        // Each CSurjectionCheck uses swap to keep pointers valid.
-        // Original values need to put back in place for next output
-        targetGenerators = copy_targetGenerators;
     }
 
     return true;
@@ -1089,40 +1080,8 @@ bool AcceptToMemoryPoolWorker(CTxMemPool& pool, CValidationState& state, const C
     BOOST_FOREACH(const CTxIn &txin, tx.vin)
     {
         auto itConflicting = pool.mapNextTx.find(txin.prevout);
-        if (itConflicting != pool.mapNextTx.end())
-        {
-            const CTransaction *ptxConflicting = itConflicting->second;
-            if (!setConflicts.count(ptxConflicting->GetHash()))
-            {
-                // Allow opt-out of transaction replacement by setting
-                // nSequence >= maxint-1 on all inputs.
-                //
-                // maxint-1 is picked to still allow use of nLockTime by
-                // non-replaceable transactions. All inputs rather than just one
-                // is for the sake of multi-party protocols, where we don't
-                // want a single party to be able to disable replacement.
-                //
-                // The opt-out ignores descendants as anyone relying on
-                // first-seen mempool behavior should be checking all
-                // unconfirmed ancestors anyway; doing otherwise is hopelessly
-                // insecure.
-                bool fReplacementOptOut = true;
-                if (fEnableReplacement)
-                {
-                    BOOST_FOREACH(const CTxIn &_txin, ptxConflicting->vin)
-                    {
-                        if (_txin.nSequence < std::numeric_limits<unsigned int>::max()-1)
-                        {
-                            fReplacementOptOut = false;
-                            break;
-                        }
-                    }
-                }
-                if (fReplacementOptOut)
-                    return state.Invalid(false, REJECT_CONFLICT, "txn-mempool-conflict");
-
-                setConflicts.insert(ptxConflicting->GetHash());
-            }
+        if (itConflicting != pool.mapNextTx.end()) {
+            setConflicts.insert(itConflicting->second->GetHash());
         }
     }
     }
