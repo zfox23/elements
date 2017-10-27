@@ -74,7 +74,7 @@ e2conf = loadConfig("contrib/assets_tutorial/elements2.conf")
 # elementsd attempts to connect to bitcoind to check if peg-in transactions
 # are confirmed in the Bitcoin chain.
 e1 = startelementsd(e1_datadir, e1conf)
-time.sleep(2)
+time.sleep(6)
 try:
     e1.getinfo()
     raise AssertionError("This should fail unless working bitcoind can be reached via JSON RPC")
@@ -86,7 +86,7 @@ bitcoin = startbitcoind(b_datadir, bconf)
 e1 = startelementsd(e1_datadir, e1conf)
 e2 = startelementsd(e2_datadir, e2conf)
 
-time.sleep(3)
+time.sleep(6)
 
 # Alternatively, you can set validatepegin=0 in their configs and not
 # run the bitcoin node, but it is necessary for fully validating the two way peg.
@@ -327,7 +327,7 @@ shutil.copyfile("contrib/assets_tutorial/elements2.conf", e2_datadir+"/elements.
 
 e1 = startelementsd(e1_datadir, e1conf, signblockarg)
 e2 = startelementsd(e2_datadir, e2conf, signblockarg)
-time.sleep(5)
+time.sleep(6)
 sync_all(e1, e2)
 
 # Now import signing keys
@@ -412,7 +412,7 @@ fedpegarg="-fedpegscript=5221"+pubkey1+"21"+pubkey2+"52ae"
 # Keys can be the same or different, doesn't matter
 e1 = startelementsd(e1_datadir, e1conf, fedpegarg)
 e2 = startelementsd(e2_datadir, e2conf, fedpegarg)
-time.sleep(5)
+time.sleep(6)
 
 # Mature some outputs on each side
 e1.generate(101)
@@ -511,4 +511,4 @@ e2.stop()
 time.sleep(2)
 shutil.rmtree(e1_datadir)
 shutil.rmtree(e2_datadir)
-
+shutil.rmtree(b_datadir)
