@@ -444,7 +444,8 @@ if use_separate_wallet:
 if pegin:
     eb.stop()
 time.sleep(5)
-shutil.rmtree(e1_datadir)
+os.makedirs("./datadir")
+shutil.move(e1_datadir, "./datadir")
 shutil.rmtree(e2_datadir)
 shutil.rmtree(e3_datadir)
 shutil.rmtree(eb_datadir)
